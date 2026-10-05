@@ -79,23 +79,23 @@ header .header .menu-switch:focus-visible {
 @media (prefers-color-scheme: dark) {
   /* Dark pages: the black logo art is inverted to light ink, and the
      dark-on-light dot pattern is dropped from the mobile menu. */
-  html.not-home:not(:has(.error-page)) header .header .header-logo img {
+  html header .header .header-logo img {
     filter: invert(1);
   }
 
-  html.not-home:not(:has(.error-page)) header .header .mobile-menu {
+  html header .header .mobile-menu {
     background-image: linear-gradient(180deg, var(--surface), transparent 79%);
   }
 
   @supports (color: color-mix(in srgb, red 30%, transparent)) {
-    html.not-home:not(:has(.error-page)) header .header .mobile-menu {
+    html header .header .mobile-menu {
       background-image: linear-gradient(180deg, var(--surface), color-mix(in srgb, var(--surface) 30%, transparent) 79%);
     }
   }
 
-  /* Page background behind everything (overscroll, short pages). The loader
-     classes and the home/404 pages keep the light gradient above. */
-  html.not-home:not(.ch-preload):not(.site-loading):not(:has(.error-page)) {
+  /* Page background behind everything (overscroll, short pages, and the
+     3D scenes before their sky loads). */
+  html:not(.ch-preload):not(.site-loading) {
     background: linear-gradient(0deg, var(--sky-bottom), var(--sky-top));
     background-attachment: fixed;
   }

@@ -3,8 +3,9 @@
    Loaded first; every other stylesheet may use these variables.
 
    Light is the default. Dark follows the visitor's device setting
-   (prefers-color-scheme) on every page except the home 3D scene, which is
-   art-directed for light and always stays light (see html:not(.not-home) below).
+   (prefers-color-scheme) on every page, the home and 404 3D scenes included
+   (their materials follow the same media query in home-scene-3d.js and the
+   error scene in app-main.js).
    ========================================================================== */
 
 :root {
@@ -92,39 +93,6 @@
     --cat-business: #5fd3a0;
     --cat-esports: #bbaee0; /* muted lavender, 8.4:1 on --surface */
     --cat-cultural: #ff8db5;
-  }
-
-  /* The 3D scenes (home and the 404 page) stay light: re-declare the light
-     palette there. */
-  html:not(.not-home),
-  html:has(.error-page) {
-    color-scheme: light;
-    --ink: #000000;
-    --ink-muted: #4a5160;
-    --ink-on-dark: #ffffff;
-    --surface: #ffffff;
-    --surface-raised: rgba(255, 255, 255, 0.9);
-    --surface-sunken: rgba(0, 0, 0, 0.04);
-    --sky-top: #f7faff;
-    --sky-bottom: #b4cbf5;
-    --page-bg: url(/images/footerPatern.png), linear-gradient(0deg, var(--sky-bottom), var(--sky-top));
-    --page-bg-size: 80px, auto;
-    --ok: #005a3c;
-    --ok-bg: #eafaf1;
-    --warn-ink: #6b4a00;
-    --warn-bg: #fff3cd;
-    --danger: #b00020;
-    --danger-bg: #fdf3f4;
-    --danger-ink: #8a1020;
-    --line: rgba(0, 0, 0, 0.08);
-    --line-strong: #000000;
-    --shadow-soft: 0 20px 60px rgba(15, 23, 42, 0.10);
-    --cat-tech: #0062d6;
-    --cat-innovation: #c2410c;
-    --cat-business: #005a3c;
-    --cat-esports: #7a2fd0;
-    --cat-cultural: #be1d5c;
-    --focus-ring: 2px solid #000000;
   }
 }
 

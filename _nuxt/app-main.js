@@ -45185,7 +45185,8 @@ void main() {
             U === "toggleSound" && W(X[0]));
         }),
           Xm(() => {
-            (window.removeEventListener("resize", F),
+            (chDarkMQ && chDarkMQ.removeEventListener && chDarkMQ.removeEventListener("change", chThemeScene),
+              window.removeEventListener("resize", F),
               window.removeEventListener("mousemove", C),
               l.revert(),
               u.traverse((U) => {
@@ -45194,8 +45195,20 @@ void main() {
               pt.ticker.remove(ue));
           }),
           wo(() => {
-            $();
+            ($(), chDarkMQ && chDarkMQ.addEventListener && chDarkMQ.addEventListener("change", chThemeScene));
           }));
+        // Device theme (as on Home): the 3D title and the sky sphere follow
+        // prefers-color-scheme, live.
+        const chDarkMQ = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null,
+          chInkMats = [];
+        let chSkyMat = null;
+        const chThemeScene = () => {
+          const dark = !!(chDarkMQ && chDarkMQ.matches);
+          chInkMats.forEach((mt) => mt.color.set(dark ? 0xeef2f8 : 0x000000));
+          chSkyMat &&
+            (chSkyMat.color.set(dark ? 0x1d2740 : 0xffffff),
+            (chSkyMat.lightMapIntensity = dark ? 0.45 : 1));
+        };
         const $ = () => {
             ((h = document.getElementById("error-scene")),
               (u = new ng()),
@@ -45275,6 +45288,7 @@ void main() {
                 ne = r.text,
                 fe = X.generateShapes(ne, 1.5 * U),
                 ae = new ph(fe);
+              (chInkMats.push(L), chThemeScene());
               ae.computeBoundingBox();
               const re = -0.5 * (ae.boundingBox.max.x - ae.boundingBox.min.x);
               ae.translate(re, 0, 0);
@@ -45368,6 +45382,7 @@ void main() {
               }),
               ae = new li(ne, fe),
               re = 1;
+            ((chSkyMat = fe), chThemeScene());
             (ae.scale.set(re, re, re),
               u.add(ae),
               setTimeout(() => {

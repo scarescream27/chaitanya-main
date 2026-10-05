@@ -6196,6 +6196,18 @@ let Ws,
             us,
             ps;
           const ys = [];
+          // Device theme: the "ink" materials (3D titles) and the sky sphere
+          // follow prefers-color-scheme like the rest of the site, live.
+          const chDarkMQ = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null,
+            chInkMats = [];
+          let chSkyMat = null;
+          const chThemeScene = () => {
+            const dark = !!(chDarkMQ && chDarkMQ.matches);
+            chInkMats.forEach((mt) => mt.color.set(dark ? 0xeef2f8 : 0x000000));
+            chSkyMat &&
+              (chSkyMat.color.set(dark ? 0x1d2740 : 0xffffff),
+              (chSkyMat.lightMapIntensity = dark ? 0.45 : 1));
+          };
           let ht = new h(0, 0, 0),
             ms = !1,
             ci = [],
@@ -6213,6 +6225,8 @@ let Ws,
             pi = et(null),
             Bt = et(null);
           (i.$onAction(({ name: N, args: A }) => {
+            // Scene not built (deep link to another page): nothing to drive.
+            if (!m) return;
             if (
               (N === "setJelMaterialOpacity" &&
                 i.getPreloaderDone &&
@@ -6363,17 +6377,19 @@ let Ws,
             }
           }),
             Si(() => {
-              (window.removeEventListener("mousemove", zs),
+              (chDarkMQ && chDarkMQ.removeEventListener && chDarkMQ.removeEventListener("change", chThemeScene),
+                window.removeEventListener("mousemove", zs),
                 window.removeEventListener("resize", Ss),
                 Ss.__raf && (cancelAnimationFrame(Ss.__raf), (Ss.__raf = 0)),
                 window.removeEventListener("mousedown", Cs),
                 r.destroy(),
                 c.revert(),
                 u.revert(),
-                m.traverse((N) => {
-                  N instanceof dt &&
-                    (N.geometry.dispose(), N.material.dispose());
-                }),
+                m &&
+                  m.traverse((N) => {
+                    N instanceof dt &&
+                      (N.geometry.dispose(), N.material.dispose());
+                  }),
                 V.ticker.remove(Ms));
               // Free the GPU: each visit to the home page creates a new WebGL
               // renderer, and browsers drop (and stall on) leaked contexts.
@@ -6392,7 +6408,13 @@ let Ws,
               } catch (err) {}
             }),
             we(() => {
+              // A deep link (e.g. /events) hydrates the prerendered home route
+              // first and then navigates away. Building the scene then would
+              // download every model and stall the real page, so only build
+              // it when the visitor is actually on Home.
+              if (location.pathname.replace(/\/$/, "") !== "") return;
               Fa();
+              chDarkMQ && chDarkMQ.addEventListener && chDarkMQ.addEventListener("change", chThemeScene);
             }));
           const Es = (N) => {
               Bt.value && Bt.value.pause();
@@ -6502,13 +6524,14 @@ let Ws,
               const N = t && window.innerWidth > 1024 ? 1 : 0.5;
               (new ul().load("/fonts/Druk_Regular.json", function (A) {
                 const G = new Zt({
-                    color: 0, // black title
+                    color: 0, // black title (white in dark mode)
                     transparent: !0,
                     opacity: 1,
                     side: He,
                   }),
                   U = A.generateShapes("CHAITANYA 2K26", 1.8 * N),
                   $ = new pl(U);
+                (chInkMats.push(G), chThemeScene());
                 $.computeBoundingBox();
                 const W = -0.5 * ($.boundingBox.max.x - $.boundingBox.min.x);
                 $.translate(W, 0, 0);
@@ -6897,6 +6920,8 @@ let Ws,
                       color: 0,
                       side: He,
                     })),
+                    chInkMats.push(W.material),
+                    chThemeScene(),
                     window.innerWidth < 1025)
                   ) {
                     if (Q === 0) {
@@ -6933,7 +6958,9 @@ let Ws,
                 (A.children[8].material = new Zt({
                   color: 0,
                   side: He,
-                })));
+                })),
+                chInkMats.push(A.children[8].material),
+                chThemeScene());
               const $ = i.getPreloaderDone ? 150 : 200;
               (setTimeout(() => {
                 ((A.children[8].visible = !1), f.position.set(0, 0, $));
@@ -7003,6 +7030,7 @@ let Ws,
                   envMapIntensity: 1,
                   transparent: !1,
                 });
+              ((chSkyMat = $), chThemeScene());
               ke = new dt(U, $);
               const W = i.getPreloaderDone ? 0.6 : 0.3;
               (ke.scale.set(W, W, W),
@@ -7454,7 +7482,7 @@ let Ws,
           const isHoldKey = (ev) =>
               (ev.key === " " || ev.key === "Enter") &&
               !s.value &&
-              !ev.target.closest?.("input, textarea, select, a, button:not(.skip-intro), [contenteditable]") &&
+              !ev.target.closest?.("input, textarea, select, a, button, [contenteditable]") &&
               !document.getElementById("chaitanya-auth-backdrop")?.classList.contains("active"),
             hk = (ev) => {
               if (!isHoldKey(ev)) return;
@@ -7465,10 +7493,6 @@ let Ws,
               if (!isHoldKey(ev)) return;
               ev.preventDefault();
               t.stopGlass();
-            },
-            skip = () => {
-              // Jump straight to the end; the timeline's onComplete reveals the site.
-              s.value || !n.duration() || (t.startProgress(), n.progress(1));
             };
           const a = () => {
               r.add(() => {
@@ -7489,11 +7513,11 @@ let Ws,
                   onComplete: () => {
                     (
                       t.finishProgress(),
-                      V.to(".click-and-hold, .skip-intro", {
+                      V.to(".click-and-hold", {
                         duration: 0.5,
                         opacity: 0,
                         onComplete: () => {
-                          V.set(".click-and-hold, .skip-intro", { display: "none" });
+                          V.set(".click-and-hold", { display: "none" });
                         },
                       }));
                   },
@@ -7525,11 +7549,6 @@ let Ws,
                     ]),
                   ]),
                 ]),
-                O(
-                  "button",
-                  { type: "button", class: "skip-intro", onClick: skip },
-                  "[ Skip intro ]",
-                ),
                 O(
                   "audio",
                   {

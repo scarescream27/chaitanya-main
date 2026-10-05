@@ -17,34 +17,31 @@
   }
 }
 
-.skip-intro {
-  position: fixed;
-  right: 20px;
-  bottom: 64px;
-  z-index: 21;
-  min-height: var(--tap);
-  padding: 0 16px;
-  border: 1.5px solid #000000;
-  border-radius: 30px;
-  background: rgba(255, 255, 255, 0.85);
-  color: #000000;
-  font-family: "IBM Plex Mono", monospace;
-  font-size: var(--fs-label);
-  font-weight: 600;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  pointer-events: auto;
-  cursor: pointer;
-}
 
-.skip-intro:hover {
-  background: #000000;
-  color: #ffffff;
-}
+/* Dark device theme: the intro, scene texts and side bars use the theme ink
+   (the minified rules above hard-code black). Black icon art is inverted. */
+@media (prefers-color-scheme: dark) {
+  .click-and-hold .wrapper .text,
+  .scene-texts .right-bar .parent .progress,
+  .scene-texts .left-bar .parent .value,
+  .scene-texts .wrapper .left-text p,
+  .scene-texts .wrapper .right-text p,
+  .scene-texts .wrapper .bottom-texts .bottom-text {
+    color: var(--ink);
+  }
 
-@media (max-width: 991px) {
-  .skip-intro {
-    right: 8px;
-    bottom: 128px;
+  .click-and-hold .wrapper .progress {
+    border-color: var(--ink);
+  }
+
+  .click-and-hold .wrapper .progress .progress-bar,
+  .scene-texts .left-bar .parent .cross,
+  .scene-texts .left-bar .parent .cross:before {
+    background-color: var(--ink);
+  }
+
+  .scene-texts .right-bar .parent img,
+  .scene-texts .wrapper .bottom-texts .bottom-text img {
+    filter: invert(1);
   }
 }

@@ -20,10 +20,6 @@ body:has(.admin-page-root) .transition-component {
   pointer-events: none !important;
 }
 
-body:has(.admin-page-root) header {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--sky-top) 96%, transparent) 70%, color-mix(in srgb, var(--sky-top) 0%, transparent));
-}
-
 .adm-shell {
   max-width: 1320px;
   margin: 0 auto;

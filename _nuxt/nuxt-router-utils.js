@@ -195,7 +195,29 @@ let st,
                 document.documentElement.classList.toggle("not-home", (path || "/").replace(/\/$/, "") !== "");
               markRoute(window.location.pathname);
               try {
-                document.querySelector("#__nuxt")?.__vue_app__?.config.globalProperties.$router?.afterEach((to) => markRoute(to.path));
+                const router = document.querySelector("#__nuxt")?.__vue_app__?.config.globalProperties.$router;
+                router?.afterEach((to) => markRoute(to.path));
+                // Every URL hydrates the prerendered home route first. Known
+                // pages then navigate on their own, but a URL that matches no
+                // route never did, leaving the visitor on a blank transition
+                // curtain. Navigate there so Nuxt shows its 404 page.
+                const here = window.location.pathname + window.location.search + window.location.hash;
+                const deepPath = window.location.pathname.replace(/\/$/, "");
+                // index.html keeps hydration from rewriting a deep link's URL
+                // to "/" (window.__deepLinkPending). Once the router has
+                // reached the linked page, stop: later replace("/") calls,
+                // like the 404 page's "back to the homepage", are real.
+                if (router && !router.__chDeepLink) {
+                  router.__chDeepLink = !0;
+                  router.afterEach((to) => {
+                    if (deepPath && to.path.replace(/\/$/, "") === deepPath) window.__deepLinkPending = false;
+                  });
+                  router.isReady().then(() => {
+                    if (router.currentRoute.value.path !== window.location.pathname && !router.resolve(here).matched.length) {
+                      router.replace(here);
+                    }
+                  });
+                }
               } catch (e) {}
               const sw = document.querySelector("header .header .menu-switch");
               if (sw && !sw.hasAttribute("role")) {

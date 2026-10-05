@@ -10,9 +10,8 @@ html.ch-preload body {
   visibility: hidden;
 }
 
-/* The loader is a light brand intro shown before the route (and so the
-   page's theme) is known: its colours are literal, not theme tokens, and it
-   stays light in dark mode too. */
+/* The loader shows before the theme tokens load, so its colours are literal;
+   it follows the device theme like every page (dark block at the end). */
 html.ch-preload,
 html.site-loading {
   color-scheme: light;
@@ -130,5 +129,31 @@ html.site-loading {
   .site-loader-word {
     animation: none;
     opacity: 1;
+  }
+}
+
+/* Dark device theme: the same intro on the navy sky used by the pages. */
+@media (prefers-color-scheme: dark) {
+  html.ch-preload,
+  html.site-loading {
+    color-scheme: dark;
+    background: #0b1120;
+  }
+
+  #site-loader {
+    background-color: #111a2d;
+    background-image: linear-gradient(0deg, #17233d, #0b1120);
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    color: #eef2f8;
+  }
+
+  #site-loader::after {
+    background: #17233d;
+  }
+
+  .site-loader-tag {
+    background-color: #0b1120;
+    color: #5fd3a0;
   }
 }
