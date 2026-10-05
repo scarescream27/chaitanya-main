@@ -621,6 +621,8 @@ export async function checkoutCart(items, details = {}, teams = {}, utr = "") {
           registeredAt: nowIso(),
         },
       ]);
+      // Teams can't be listed, so joining goes through this code -> team lookup.
+      writes.push(["team_codes", teamCode, { teamId, eventId: ev.id, leaderUid: user.uid }]);
     }
 
     writes.push([
@@ -753,7 +755,8 @@ export async function joinTeamWithCode(rawCode, ev = null, details = {}) {
   }
 
   const evInfo = { id: found.eventId, title: found.eventName };
-  const link = { uid: user.uid, name: user.displayName || "Teammate" };
+  // The code in the link entry is checked by the rules (proves the code was known).
+  const link = { uid: user.uid, name: cleanText(user.displayName) || "Teammate", code };
   const registration = {
     id: registrationId(found.eventId, user.uid),
     user_id: user.uid,
@@ -837,11 +840,8 @@ export async function joinTeamWithCode(rawCode, ev = null, details = {}) {
 
 async function findTeamByCode(code) {
   if (isLive()) {
-    const { collection, query, where, limit, getDocs } = fsMod;
-    const snap = await getDocs(
-      query(collection(firebaseFirestore, "teams"), where("teamCode", "==", code), limit(1))
-    );
-    return snap.empty ? null : snap.docs[0].data();
+    const lookup = await getDocData("team_codes", code);
+    return lookup?.teamId ? getDocData("teams", lookup.teamId) : null;
   }
   return demoList("teams").find((t) => t.teamCode === code) || null;
 }
@@ -863,11 +863,13 @@ export function bookingStatus(registration, payment, team) {
   const s = registration?.payment_status;
   if (s === PAYMENT_STATUS.FREE) return "booked";
   if (s === PAYMENT_STATUS.TEAM) {
+    if (!teamCoversRegistration(team, registration)) return "pending";
     const ts = team?.paymentStatus;
     if (!ts || ts === "free" || ts === "paid" || ts === "verified") return "booked";
     return ts === "rejected" ? "rejected" : "pending";
   }
-  const ps = payment?.status || s;
+  // A payment only counts for the event and person it was made for.
+  const ps = payment ? (paymentCoversEvent(payment, registration?.user_id, registration?.event_id) ? payment.status : PAYMENT_STATUS.PENDING) : s;
   if (ps === PAYMENT_STATUS.VERIFIED) return "booked";
   if (ps === PAYMENT_STATUS.REJECTED) return "rejected";
   return "pending";
@@ -1018,7 +1020,13 @@ export async function cancelRegistration(eventId) {
     const { doc, writeBatch, arrayRemove, serverTimestamp } = fsMod;
     const batch = writeBatch(firebaseFirestore);
     if (registration) batch.delete(doc(firebaseFirestore, "registrations", regId));
-    if (teamAction === "delete") batch.delete(doc(firebaseFirestore, "teams", team.teamId));
+    if (teamAction === "delete") {
+      batch.delete(doc(firebaseFirestore, "teams", team.teamId));
+      // Older teams may have no lookup doc; deleting a missing one is refused by the rules.
+      if (team.teamCode && (await getDocData("team_codes", team.teamCode))) {
+        batch.delete(doc(firebaseFirestore, "team_codes", team.teamCode));
+      }
+    }
     if (teamAction === "leave") {
       batch.update(doc(firebaseFirestore, "teams", team.teamId), {
         memberUids: team.memberUids.filter((uid) => uid !== user.uid),
@@ -1216,6 +1224,27 @@ export function getAllTeams() {
   return listCollection("teams");
 }
 
+/**
+ * Admin: create the code -> team lookup for teams made before team_codes
+ * existed, so their members can still join by code.
+ */
+export async function backfillTeamCodes(teams) {
+  requireAdmin();
+  if (!isLive()) return 0;
+  const existing = new Set((await listCollection("team_codes")).map((c) => c._docId));
+  const missing = (teams || []).filter((t) => t.teamCode && t.teamId && !existing.has(t.teamCode));
+  if (!missing.length) return 0;
+  const { doc, writeBatch } = fsMod;
+  for (let i = 0; i < missing.length; i += 400) {
+    const batch = writeBatch(firebaseFirestore);
+    missing.slice(i, i + 400).forEach((t) =>
+      batch.set(doc(firebaseFirestore, "team_codes", t.teamCode), { teamId: t.teamId, eventId: t.eventId, leaderUid: t.leaderUid })
+    );
+    await batch.commit();
+  }
+  return missing.length;
+}
+
 export function getAllPayments() {
   return listCollection("payments");
 }
@@ -1252,6 +1281,16 @@ export async function setQueryStatus(query, status) {
 /**
  * Items covered by a payment (supports legacy single-event payments).
  */
+/** True when `payment` was made by `payerUid` and lists `eventId`. */
+export function paymentCoversEvent(payment, payerUid, eventId) {
+  return Boolean(payment && payerUid && payment.payerUid === payerUid && paymentItems(payment).some((it) => it.eventId === eventId));
+}
+
+/** True when `team` is for the registration's event and the registrant is linked to it. */
+export function teamCoversRegistration(team, registration) {
+  return Boolean(team && registration && team.eventId === registration.event_id && (team.memberUids || []).includes(registration.user_id));
+}
+
 export function paymentItems(payment) {
   if (Array.isArray(payment?.items) && payment.items.length) return payment.items;
   if (payment?.eventId) {

@@ -20,6 +20,9 @@ import {
   getAllQueries,
   setQueryStatus,
   paymentItems,
+  paymentCoversEvent,
+  teamCoversRegistration,
+  backfillTeamCodes,
   approvePayment,
   rejectPayment,
 } from "./auth-service.js";
@@ -184,6 +187,11 @@ async function loadData() {
     }
   });
   try {
+    await backfillTeamCodes(state.teams);
+  } catch (err) {
+    state.errors.push(`team codes: ${err?.message || err}`);
+  }
+  try {
     const res = await fetch("/api/health", { cache: "no-store" });
     state.devServer = res.ok && (res.headers.get("content-type") || "").includes("json");
   } catch {
@@ -200,7 +208,9 @@ function eventFee(eventId) {
 }
 
 // Effective payment status per registration (free, verified, team leader's
-// payment for members, or unpaid).
+// payment for members, or unpaid). A payment only counts when its payer is the
+// registrant (or their team leader) and it lists the registration's event, so
+// one verified payment can't be reused for other events.
 function computeData() {
   const paymentsById = new Map(state.payments.map((p) => [p.paymentId, p]));
   const teamsById = new Map(state.teams.map((t) => [t.teamId, t]));
@@ -211,14 +221,15 @@ function computeData() {
   const regRows = state.registrations.map((r) => {
     const fee = eventFee(r.event_id);
     let payStatus;
-    if (r.participation_type === "team" && r.team_role === "member") {
-      const team = teamsById.get(r.team_id);
-      const leaderPay = team?.paymentId ? paymentsById.get(team.paymentId) : null;
-      payStatus = fee === 0 ? "free" : leaderPay?.status || "unpaid";
-    } else if (fee === 0) {
+    if (fee === 0) {
       payStatus = "free";
+    } else if (r.participation_type === "team" && r.team_role === "member") {
+      const team = teamsById.get(r.team_id);
+      const leaderPay = teamCoversRegistration(team, r) && team.paymentId ? paymentsById.get(team.paymentId) : null;
+      payStatus = paymentCoversEvent(leaderPay, team?.leaderUid, r.event_id) ? leaderPay.status : "unpaid";
     } else {
-      payStatus = paymentsById.get(r.payment_id)?.status || "unpaid";
+      const pay = paymentsById.get(r.payment_id);
+      payStatus = paymentCoversEvent(pay, r.user_id, r.event_id) ? pay.status : "unpaid";
     }
     return { ...r, fee, payStatus, team: teamsById.get(r.team_id) || null };
   });

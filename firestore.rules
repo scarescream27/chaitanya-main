@@ -21,6 +21,7 @@ service cloud.firestore {
         request.auth.token.email.lower() in [
           "chaitanyahptu@gmail.com",
           "adityaverma200911@gmail.com",
+          "manaskapoor033@gmail.com",
           "admin@chaitanya2k26.org"
         ];
     }
@@ -45,12 +46,30 @@ service cloud.firestore {
       return value is string && value.matches('^[0-9]{12}$');
     }
 
-    // Entry fee as seeded by the admin "Apply Schema" action. If events are
-    // not seeded yet the fee cannot be checked here; the admin dashboard
-    // flags unpaid registrations for paid events either way.
+    function isTeamCode(value) {
+      return value is string && value.matches('^[A-Z0-9]{1,6}-[A-Z0-9]{3,6}$');
+    }
+
+    // A checkout's payment id: pay_{own uid}_{timestamp}.
+    function isOwnPaymentId(value) {
+      return value is string && value.matches('^pay_' + request.auth.uid + '_[0-9]+$');
+    }
+
+    // Entry fee as seeded by the admin "Apply Schema" / Setup sync. An event
+    // that isn't in Firestore is never treated as free.
     function eventIsFree(eventId) {
       let path = /databases/$(database)/documents/events/$(eventId);
-      return !exists(path) || get(path).data.entryFeeNum == 0;
+      return exists(path) && get(path).data.entryFeeNum == 0;
+    }
+
+    // Teammate leaving: exactly one linkedMembers entry removed, and it is theirs.
+    function removesOnlySelf(before, after) {
+      let removed = before.removeAll(after);
+      return after is list &&
+        after.size() == before.size() - 1 &&
+        after.hasOnly(before) &&
+        removed.size() == 1 &&
+        removed[0].uid == request.auth.uid;
     }
 
     // =========================================================================
@@ -106,8 +125,9 @@ service cloud.firestore {
     // =========================================================================
     match /teams/{teamId} {
       allow get: if isAuthenticated();
-      // Participants may only look a team up by code (limit 1), not list them all.
-      allow list: if isAdmin() || (isAuthenticated() && request.query.limit <= 1);
+      // Teams can't be listed (that would expose every code); joining looks
+      // the team up through team_codes/{code}.
+      allow list: if isAdmin();
 
       // Leader creates the team: roster of names, only their own account linked.
       allow create: if isAuthenticated() &&
@@ -121,18 +141,26 @@ service cloud.firestore {
         data().maxTeamSize <= 20 &&
         data().teamSize == data().members.size() &&
         isShortString(data().teamName, 60) &&
-        data().teamCode is string &&
-        data().paymentStatus in ['free', 'pending'] &&
-        (data().paymentStatus == 'pending' || eventIsFree(data().eventId));
+        isTeamCode(data().teamCode) &&
+        getAfter(/databases/$(database)/documents/team_codes/$(data().teamCode)).data.teamId == teamId &&
+        (
+          (data().paymentStatus == 'pending' && isOwnPaymentId(data().get('paymentId', null))) ||
+          (data().paymentStatus == 'free' && data().get('paymentId', null) == null && eventIsFree(data().eventId))
+        );
 
-      // A teammate links their account: they may only append themself.
+      // A teammate links their account: they may only append themself, must
+      // know the team code, and may not touch existing entries.
       allow update: if isAdmin() || (
         isAuthenticated() &&
         !(request.auth.uid in resource.data.memberUids) &&
         changedKeys().hasOnly(['memberUids', 'linkedMembers']) &&
         data().memberUids == resource.data.memberUids.concat([request.auth.uid]) &&
         data().linkedMembers.size() == resource.data.linkedMembers.size() + 1 &&
-        data().linkedMembers[data().linkedMembers.size() - 1].uid == request.auth.uid &&
+        data().linkedMembers[0:resource.data.linkedMembers.size()] == resource.data.linkedMembers &&
+        data().linkedMembers[resource.data.linkedMembers.size()].keys().hasOnly(['uid', 'name', 'code']) &&
+        data().linkedMembers[resource.data.linkedMembers.size()].uid == request.auth.uid &&
+        data().linkedMembers[resource.data.linkedMembers.size()].code == resource.data.teamCode &&
+        isShortString(data().linkedMembers[resource.data.linkedMembers.size()].name, 120) &&
         data().memberUids.size() <= resource.data.maxTeamSize
       ) || (
         // A linked teammate (not the leader) may take only themself off the team.
@@ -141,7 +169,7 @@ service cloud.firestore {
         request.auth.uid != resource.data.leaderUid &&
         changedKeys().hasOnly(['memberUids', 'linkedMembers']) &&
         data().memberUids == resource.data.memberUids.removeAll([request.auth.uid]) &&
-        data().linkedMembers.size() == resource.data.linkedMembers.size() - 1
+        removesOnlySelf(resource.data.linkedMembers, data().linkedMembers)
       );
 
       // The leader may delete their team while nobody else has linked to it
@@ -151,6 +179,31 @@ service cloud.firestore {
         resource.data.leaderUid == request.auth.uid &&
         resource.data.memberUids == [request.auth.uid] &&
         resource.data.paymentStatus in ['free', 'rejected']
+      );
+    }
+
+    // =========================================================================
+    // TEAM CODES — private code -> team lookup (get by exact code only)
+    // =========================================================================
+    match /team_codes/{code} {
+      allow get: if isAuthenticated();
+      allow list: if isAdmin();
+
+      // Written by the leader in the same batch as their team.
+      allow create: if isAdmin() || (
+        isAuthenticated() &&
+        isTeamCode(code) &&
+        data().keys().hasOnly(['teamId', 'eventId', 'leaderUid']) &&
+        data().leaderUid == request.auth.uid &&
+        data().teamId == 'team_' + data().eventId + '_' + request.auth.uid &&
+        getAfter(/databases/$(database)/documents/teams/$(data().teamId)).data.teamCode == code
+      );
+      allow update: if isAdmin();
+      // Removed by the leader together with their team.
+      allow delete: if isAdmin() || (
+        isAuthenticated() &&
+        resource.data.leaderUid == request.auth.uid &&
+        !existsAfter(/databases/$(database)/documents/teams/$(resource.data.teamId))
       );
     }
 
@@ -182,11 +235,14 @@ service cloud.firestore {
         data().registration_status == 'registered' &&
         data().registration_qr_id is string &&
         (
-          data().payment_status == 'pending_verification' ||
+          // Paid entries must point at the registrant's own checkout payment.
+          (data().payment_status == 'pending_verification' && isOwnPaymentId(data().get('payment_id', null))) ||
           (data().payment_status == 'free' && eventIsFree(data().event_id)) ||
-          // Teammates are covered by their leader's team payment.
+          // Teammates are covered by their leader's payment for this same event.
           (data().payment_status == 'team' &&
             data().participation_type == 'team' &&
+            data().team_id is string &&
+            getAfter(/databases/$(database)/documents/teams/$(data().team_id)).data.eventId == data().event_id &&
             request.auth.uid in getAfter(/databases/$(database)/documents/teams/$(data().team_id)).data.memberUids)
         );
 
